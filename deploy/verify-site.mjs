@@ -9,7 +9,10 @@
  *   node deploy/verify-site.mjs https://example.com --port 8080
  *
  * It fetches every local asset referenced by index.html / wiki.html / save.html,
- * plus the runtime string packs, and reports status + size. Exit code 1 on failure.
+ * plus the runtime string packs, and reports status + size. Against a live URL it
+ * additionally checks the response headers, so you can confirm deploy/_headers
+ * (caching + security headers) really took effect on the host.
+ * Exit code 1 on failure.
  */
 import http from 'node:http';
 import fs from 'node:fs';
@@ -128,10 +131,51 @@ async function check(base, rel) {
   }
 }
 
+/**
+ * Response-header checks. These verify that deploy/_headers actually took effect
+ * on the host (GitHub Pages ignores _headers, Cloudflare Pages / Workers and
+ * Netlify honour it). Only meaningful against a live site, so it is skipped when
+ * we are checking a local directory.
+ */
+const HEADER_CHECKS = [
+  { path: 'index.html', expect: /no-cache|max-age=0/i, label: 'entry page must not be cached' },
+  { path: 'evolve/main.js', expect: /max-age=604800/i, label: 'assets cached 7 days' },
+  { path: 'strings/strings.json', expect: /max-age=3600/i, label: 'string packs cached 1 hour' },
+];
+
+async function checkHeaders(base) {
+  console.log('');
+  console.log('RESPONSE HEADERS  (expected values come from deploy/_headers)');
+  console.log('-'.repeat(78));
+  for (const c of HEADER_CHECKS) {
+    let cc = '(request failed)';
+    try {
+      const res = await fetch(base + c.path, { redirect: 'follow' });
+      await res.arrayBuffer();
+      cc = res.headers.get('cache-control') || '(none)';
+      const ok = c.expect.test(cc);
+      console.log(pad(ok ? 'OK' : 'WARN', 8) + pad(c.path, 24) + cc);
+      if (!ok) warnings.push(`${c.path}: cache-control "${cc}" does not match deploy/_headers (${c.label})`);
+    } catch (e) {
+      console.log(pad('WARN', 8) + pad(c.path, 24) + e.message);
+      warnings.push(`${c.path}: could not read headers (${e.message})`);
+    }
+  }
+  try {
+    const res = await fetch(base + 'index.html', { redirect: 'follow' });
+    await res.arrayBuffer();
+    const xcto = res.headers.get('x-content-type-options');
+    const rp = res.headers.get('referrer-policy');
+    console.log(pad(' ', 8) + pad('security headers', 24) + `x-content-type-options=${xcto || '(none)'}  referrer-policy=${rp || '(none)'}`);
+    if (!xcto) warnings.push('x-content-type-options is missing - deploy/_headers may not be applied by this host');
+  } catch {
+    /* already reported above */
+  }
+}
+
 const pad = (s, n) => String(s).padEnd(n);
 
-/** Poll until the site answers (useful right after a deploy, while CDNs catch up). */
-async function waitForBase(base, sec) {
+/** Poll until the site answers (useful right after a deploy, while CDNs catch up). */async function waitForBase(base, sec) {
   if (!sec) return;
   const deadline = Date.now() + sec * 1000;
   for (let attempt = 1; ; attempt++) {
@@ -201,6 +245,9 @@ async function waitForBase(base, sec) {
     warnings.push(`evolve/main.js is only ${mainJs.bytes} bytes - bundle looks broken/unbuilt`);
   const idx = htmlCache['index.html'] || '';
   if (idx && !/evolve\/main\.js/.test(idx)) failures.push('index.html does not reference evolve/main.js');
+
+  // Response headers only make sense against a real host.
+  if (target) await checkHeaders(base);
 
   console.log('');
   console.log(`checked ${rows.length} assets, ${rows.filter((r) => r.ok).length} ok, ${failures.length} failed`);
