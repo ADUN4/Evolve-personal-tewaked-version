@@ -1,0 +1,8 @@
+node_modules
+dist
+.git
+.github
+docs
+*.log
+npm-debug.log*
+package-lock.json.tmp

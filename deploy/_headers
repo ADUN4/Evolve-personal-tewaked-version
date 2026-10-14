@@ -1,0 +1,31 @@
+# Cache/security headers for Cloudflare Pages and Netlify.
+# make-dist.mjs copies this file to dist/_headers, which both platforms read.
+# GitHub Pages ignores it (it has no custom-header support).
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer-when-downgrade
+
+/index.html
+  Cache-Control: no-cache
+
+/wiki.html
+  Cache-Control: no-cache
+
+/save.html
+  Cache-Control: no-cache
+
+/evolve/*
+  Cache-Control: public, max-age=604800
+
+/wiki/*
+  Cache-Control: public, max-age=604800
+
+/lib/*
+  Cache-Control: public, max-age=604800
+
+/font/*
+  Cache-Control: public, max-age=604800
+
+/strings/*
+  Cache-Control: public, max-age=3600

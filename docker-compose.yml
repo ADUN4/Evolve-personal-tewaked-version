@@ -1,0 +1,11 @@
+# docker compose up -d --build   ->  http://localhost:8080/
+services:
+  evolve:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: evolve:local
+    container_name: evolve
+    ports:
+      - "8080:80"
+    restart: unless-stopped

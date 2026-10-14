@@ -1,0 +1,20 @@
+*~
+*#
+.*
+# The ".*" rule above also ignores .github/, .nojekyll, .dockerignore and even
+# .gitignore/.gitattributes themselves. Re-include them so "git add ." does not
+# silently skip the deployment files (verified: without these lines, a fresh
+# "git init && git add ." stages 138 files but none of the dotfiles).
+!.github/
+!.github/workflows/
+!.github/workflows/deploy.yml
+!.nojekyll
+!.dockerignore
+!.gitignore
+!.gitattributes
+update.*.json
+strings/last-strings.json
+node_modules/*
+docs
+dist
+*.map
