@@ -22,7 +22,8 @@
     "dist-no-build": "node deploy/make-dist.mjs --no-build",
     "verify": "node deploy/verify-site.mjs",
     "weight": "node deploy/measure-weight.mjs",
-    "deploy:cf": "npx --yes wrangler@latest pages deploy dist --project-name evolve",
+    "deploy:cf": "npx --yes wrangler@latest deploy",
+    "deploy:cf-pages": "npx --yes wrangler@latest pages deploy dist --project-name evolve",
     "deploy": "rm -rf dist && mkdir dist && cp -r *.html *.ico LICENSE evolve lib font strings wiki dist && gh-pages -d dist",
     "deploy-win": "(rmdir /S /Q dist || echo recreating dist) && mkdir dist && xcopy /E /I evolve dist\\evolve && xcopy /E /I font dist\\font && xcopy /E /I lib dist\\lib && xcopy /E /I strings dist\\strings && xcopy /E /I wiki dist\\wiki && copy *.html dist && copy *.ico dist && copy LICENSE dist && gh-pages -d dist"
   },
@@ -41,14 +42,13 @@
   "homepage": "https://github.com/pmotschmann/Evolve#readme",
   "devDependencies": {
     "csso-cli": "^4.0.2",
+    "gh-pages": "^6.1.1",
     "ini": "^1.3.8",
-    "less": "^3.13.0",
-    "servehere": "^1.7.0",
-    "gh-pages": "^6.1.1"
+    "servehere": "^1.7.0"
   },
   "dependencies": {
+    "csso": "^5.0.5",
     "esbuild": "0.25.0",
-    "node": "^16.1.0",
-    "npmcli": "^1.2.2"
+    "less": "^3.13.0"
   }
 }

@@ -1,0 +1,29 @@
+// Cloudflare Workers configuration for this static site.
+//
+// This file is required by the Workers Builds flow, where the Git integration
+// asks for a "Build command", a "Deploy command" and a "Preview command"
+// instead of the classic Pages "Build output directory" field.
+//
+// How the three fields map to this project:
+//   Build command   : node deploy/make-dist.mjs      <- produces ./dist
+//   Deploy command  : npx wrangler deploy            <- reads THIS file, uploads ./dist
+//   Preview command : npx wrangler versions upload   <- same, as a preview version
+//
+// The static site is served straight from ./dist; there is no Worker script.
+{
+  // Must match the Worker name you create in the dashboard.
+  // If you picked a different project name, change this value to match it.
+  "name": "evolve",
+
+  // Required by Workers. Any past date is valid; bump it when you want to opt
+  // in to newer runtime behaviour. Static assets do not run any script code.
+  "compatibility_date": "2025-01-01",
+
+  "assets": {
+    // Relative to this file. deploy/make-dist.mjs writes the site here.
+    "directory": "./dist",
+    // dist/_headers (generated from deploy/_headers) is picked up automatically
+    // by the assets layer, so the cache and security headers still apply here.
+    "not_found_handling": "none"
+  }
+}

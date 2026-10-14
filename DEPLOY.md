@@ -30,7 +30,7 @@
 
 | 平台 | 免费带宽额度 | 这份站点的实际含义 |
 |---|---|---|
-| **Cloudflare Pages** | **不限量** | 不会撞线 ← 公开站首选 |
+| **Cloudflare（Pages / Workers 静态资源）** | **不限量** | 不会撞线 ← 公开站首选；静态资源请求免费且不限量 |
 | GitHub Pages | 软限制 ~100 GB/月 | 10 万首次访客 ≈ 130 GB（gzip），约 7–8 万访客就撞线 |
 | Vercel（免费） | 100 GB/月 | 同 GitHub Pages，约 7 万首发访客 |
 | 国内 OSS / COS + CDN | 按量计费，很便宜 | 国内最快最稳，但要 ICP 备案 |
@@ -269,15 +269,59 @@ git push -u origin main
 
 ---
 
-## 4. ★ 已选定：Cloudflare Pages
+## 4. ★ 已选定：Cloudflare（Workers 静态资源）
 
-免费、带宽不限量、支持自定义响应头、免备案、自带 HTTPS + CDN。Cloudflare 默认对 HTML/CSS/JS 开 Brotli，所以首次加载实际传输约 **1.10 MB**（原始 5.13 MB）。
+免费；静态资源请求**免费且不限量**（官方原文 *"Requests to static assets are free and unlimited"*，见 [Billing and limitations](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)）；支持自定义响应头；免备案；自带 HTTPS + CDN。Cloudflare 对 HTML/CSS/JS 默认开 Brotli，首次加载实际传输约 **1.10 MB**（原始 5.13 MB）。
 
-### 4.1 方式一：接 Git 仓库（推荐，push 即部署）
+### 4.0 先分清你看的是哪个界面（字段完全不一样）
 
-1. 先把代码推上 GitHub —— 见第 3.1 节，**别忘了那一步的 `.gitignore` 检查**
-2. Cloudflare 后台 → **Workers & Pages → Create → Pages → Connect to Git**
-3. 选中仓库，构建配置照抄：
+| 后台出现的字段 | 属于哪个产品 | 关键区别 |
+|---|---|---|
+| Build command + **Build output directory** | 经典 **Pages** | 产出目录由面板指定 |
+| Build command + **Deploy command** + **Preview command** | **Workers Builds** | 产出目录写在仓库的 `wrangler.jsonc` 里 |
+
+看到 **Deploy command / Preview command**，就是 Workers Builds，按 4.1 填。相关文档：[Workers CI/CD 配置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)。
+
+### 4.1 Workers Builds 流程（看到 Deploy / Preview command 就照这个填）
+
+| 字段 | 填什么 |
+|---|---|
+| Project name | `evolve` —— 要与 `wrangler.jsonc` 里的 `name` 一致 |
+| **Build command** | `node deploy/make-dist.mjs` |
+| **Deploy command** | `npx wrangler deploy`（默认值，不用改） |
+| **Preview command** | 保持默认（`npx wrangler preview`）；若报该命令已废弃，改成 `npx wrangler versions upload` |
+| 环境变量（如果有这一栏） | `NODE_VERSION = 20` |
+
+原理：Deploy command 读取仓库根目录的 **`wrangler.jsonc`**，把 `./dist` 整个目录作为静态资源上传，没有 Worker 脚本。
+
+### 4.2 `wrangler.jsonc`（已建好并**实测验证过**）
+
+```jsonc
+{
+  "name": "evolve",
+  "compatibility_date": "2025-01-01",
+  "assets": { "directory": "./dist", "not_found_handling": "none" }
+}
+```
+
+验证不是照抄文档，是真跑了一次 dry-run：
+
+```
+$ npx wrangler deploy --dry-run
+⛅️ wrangler 4.151.0
+✨ Read 69 files from the assets directory D:\evolve-main\dist
+Total Upload: 0.37 KiB / gzip: 0.27 KiB
+No bindings found.
+--dry-run: exiting now.
+```
+
+（69 = 64 个文件 + 5 个目录，wrangler 把目录也计入；`Total Upload` 只是元数据，静态资源另算。）纯静态资源、不需要 `main` 脚本，配置被 wrangler 接受。
+
+`dist/_headers` 在这里同样生效 —— 官方文档支持把 `_headers` 放进静态资源目录（见 [Headers](https://developers.cloudflare.com/workers/static-assets/headers/)），所以缓存策略和 `X-Content-Type-Options` / `Referrer-Policy` 照旧。
+
+> 若构建日志报 `assets.bucket is a required field`，说明构建镜像里的 wrangler 太旧（要求 ≥ 3.78.10）；在 `devDependencies` 里加一个新版 wrangler 即可。
+
+### 4.3 Pages 流程（后台还能选 Pages 的话）
 
 ```
 Framework preset       : None
@@ -286,24 +330,21 @@ Build output directory : dist
 环境变量                : NODE_VERSION = 20
 ```
 
-4. **Save and Deploy** → 拿到 `https://<项目名>.pages.dev`
-5. 绑自己的域名：**Custom domains → Set up a domain**（域名托管在 Cloudflare 就一键配好 DNS；不在的话按提示改 NS 或加 CNAME）
-6. 之后每次 push 到 `main`，Cloudflare 自动重新构建发布
-
-> Cloudflare Pages 检测到 `package-lock.json` 会用 `npm ci` 装依赖 —— **这就是前面必须先修 lockfile 的原因**，不然线上构建会和本地一样直接报 `can only install packages when ... in sync`。
-
-### 4.2 方式二：不接 Git，命令行直接上传
+### 4.4 命令行直接部署（不走 Git，可选）
 
 ```powershell
-npm run dist          # 先构建出 dist/
-npm run deploy:cf     # = npx --yes wrangler@latest pages deploy dist --project-name evolve
+npm run dist             # 先构建出 dist/
+npm run deploy:cf        # = npx --yes wrangler@latest deploy      （读 wrangler.jsonc）
+npm run deploy:cf-pages  # 若项目建在 Pages 上：npx wrangler pages deploy dist --project-name evolve
 ```
 
-首次会要求浏览器登录 Cloudflare 并确认创建项目；`evolve` 这个名字被占用了就换一个（改命令里的 `--project-name`）。
+首次会弹浏览器让你登录 Cloudflare。
 
-我**没有**把 wrangler 写进 `devDependencies` —— 它会额外拖进几十 MB 依赖和 workerd 二进制，而这里只是偶尔用一次，所以走 `npx`。
+> ⚠️ 这条命令上本项目**踩过一个真实的坑**：`dependencies` 里原来有 `node@^16.1.0`，装上之后 `node_modules/.bin/node` 会**遮蔽系统 Node**，导致 `npx wrangler` 跑在 Node 16 上并直接失败：
+> `Wrangler requires at least Node.js v22.0.0. You are using v16.6.1.`
+> 这两个没人引用的依赖（`node`、`npmcli`）我已经卸载了，`node_modules` 从 142.7 MB 瘦到 20.9 MB。**Cloudflare 的构建镜像同样会 `npm ci` 装上它们、同样会遮蔽**，所以这一步不是可选的清理，而是这条路线能跑通的前提。
 
-### 4.3 已经为这条路线准备好的东西
+### 4.5 已经为这条路线准备好的东西
 
 | 文件 | 作用 |
 |---|---|
@@ -312,7 +353,7 @@ npm run deploy:cf     # = npx --yes wrangler@latest pages deploy dist --project-
 | `deploy/nginx.conf` | CF 上用不到，留给「自建服务器」那条路线 |
 | `.nojekyll` | CF 用不到，留着无害 |
 
-### 4.4 上线后复检（别跳过）
+### 4.6 上线后复检（别跳过）
 
 ```powershell
 node deploy/verify-site.mjs https://你的域名/ --wait 90
@@ -320,11 +361,11 @@ node deploy/verify-site.mjs https://你的域名/ --wait 90
 
 它会逐个请求线上资产（`main.js`、`wiki.js`、语言包、图标……），看到 `RESULT: PASS` 才算真的好了。
 
-### 4.5 那条 GitHub Actions 我已经改成手动触发
+### 4.7 那条 GitHub Actions 我已经改成手动触发
 
 `deploy.yml` 现在只保留 `workflow_dispatch`，**不再随 push 自动跑**。原因：这条路线由 Cloudflare 构建，如果 Actions 还在 push 时自动跑，会因为仓库没开 GitHub Pages 而每次都报 "Pages site not found" 变成红叉。哪天你想切回 GitHub Pages，去 Actions 页点一次 "Run workflow" 就行。
 
-### 4.6 Vercel（备选，免费额度 100 GB/月）
+### 4.8 Vercel（备选，免费额度 100 GB/月）
 
 仓库根已经放好了 `vercel.json`，Import 仓库后不用改任何设置：
 
@@ -396,7 +437,8 @@ docker run --name evolve -p 8080:80 -d evolve
 | `vercel.json` | Vercel 零配置部署 |
 | `Dockerfile`（已改） | Node 版本修正 + 走 make-dist + nginx 配置 |
 | `.gitignore`（已改） | 补反向规则，避免 `.github/`、`.nojekyll`、`.dockerignore`、`.gitignore`、`.gitattributes` 被 `.*` 静默吞掉 |
-| `package.json`（已改） | 新增 `npm run dist` / `dist-no-build` / `verify` / `serve:dist` 脚本 |
+| `package.json`（已改） | 新增 `dist` / `dist-no-build` / `verify` / `weight` / `serve:dist` / `deploy:cf` / `deploy:cf-pages` 脚本；**卸载了没人引用的 `node`、`npmcli`**（它们遮蔽系统 Node，见 4.4） |
+| `wrangler.jsonc` | ★ Workers 流程必需：声明 `assets.directory = ./dist`，Deploy command 靠它上传静态资源（已用 wrangler 4.151.0 dry-run 验证） |
 | `index.html`（已改） | 删掉客服挂件（`g8hh.com` 的 css+js）、别人的 GA、别人的百度统计 |
 | `wiki.html` / `save.html`（已改） | 各删掉一份别人的 GA |
 
@@ -442,30 +484,39 @@ docker run --name evolve -p 8080:80 -d evolve
 | 首次加载称重 | ✅ 25 个文件：原始 5.13 MB → gzip **1.33 MB**（26%）→ brotli **1.10 MB**（21%）；10 万首发访客 ≈ gzip 130 GB |
 | 最大单文件（对比 CF Pages 25 MiB 单文件上限） | ✅ `wiki/wiki.js` 2.33 MiB，占上限 **9.31%** |
 | 改完 workflow 后重新校验 YAML | ✅ `top-level keys: name, on, permissions, concurrency, jobs`；`triggers: {"workflow_dispatch":null}`（确认已不再随 push 触发） |
-| `package.json` 脚本 | ✅ `dist` / `dist-no-build` / `verify` / `weight` / `serve:dist` / `deploy:cf` 全部注册成功 |
+| `package.json` 脚本 | ✅ `dist` / `dist-no-build` / `verify` / `weight` / `serve:dist` / `deploy:cf` / `deploy:cf-pages` 全部注册成功 |
+| `wrangler.jsonc` 实机验证 | ✅ `npx wrangler deploy --dry-run`（wrangler **4.151.0**）→ `Read 69 files from the assets directory D:\evolve-main\dist`、`No bindings found.`，无 entry-point 报错，纯静态资源配置被接受 |
+| 发现并修复 Node 遮蔽 | ✅ 卸载前 `npx wrangler` 报 `Wrangler requires at least Node.js v22.0.0. You are using v16.6.1.` —— 根因是 `dependencies` 里的 `node@^16.1.0` 提供了 `node_modules/.bin/node`。卸载 `node`+`npmcli` 后遮蔽消失 |
+| 卸载后重跑全链 | ✅ `npm ci` 165 包 2 秒通过；`make-dist` 64 files / 17.81 MB；`verify-site` 26/26 → `RESULT: PASS`；`node_modules` 142.7 MB → **20.9 MB** |
 | Docker 镜像构建 | ⚠️ **未执行**（本机没有 docker 命令） |
 
 ---
 
-## 10. 最短路径总结（Cloudflare Pages）
+## 10. 最短路径总结（Cloudflare Workers 静态资源）
 
 ```powershell
 cd D:\evolve-main
 npm install                                   # 1. 修 lockfile（必须一起提交）
-node deploy/make-dist.mjs                     # 2. 重新构建（别用仓库里的旧 main.js）
-node deploy/verify-site.mjs                   # 3. 看到 RESULT: PASS
+npm run dist                                  # 2. 重新构建（别用仓库里的旧 main.js）
+npm run verify                                # 3. 看到 RESULT: PASS
 
-git init -b main
-git add .
-git status                                    # 4. 确认 .github/ 和 .nojekyll 在列
-git commit -m "Evolve 中文版 + 部署配置"
-git remote add origin https://github.com/USERNAME/REPO.git
+git add .; git status                         # 4. 确认 .github/、.nojekyll、wrangler.jsonc 在列
+git commit -m "部署配置"
+git remote add origin https://github.com/ADUN4/evolve.git   # 换成你的仓库地址
 git push -u origin main                       # 5. 推送
 ```
 
-6. Cloudflare 后台 → **Workers & Pages → Create → Pages → Connect to Git** → 选仓库
-7. 构建配置：Build command `node deploy/make-dist.mjs`，Output directory `dist`，环境变量 `NODE_VERSION=20`
-8. **Save and Deploy** → 拿到 `https://<项目名>.pages.dev`
+6. Cloudflare 后台 → **Workers & Pages → Create → Workers → Connect to Git** → 选仓库
+7. 四个字段照抄：
+
+```
+Project name    : evolve                 （要和 wrangler.jsonc 的 name 一致）
+Build command   : node deploy/make-dist.mjs
+Deploy command  : npx wrangler deploy     （默认值）
+Preview command : 保持默认
+```
+
+8. **Deploy** → 拿到 `https://evolve.<你的子域>.workers.dev`
 9. 绑自己的域名（**正式拉人之前定好**，存档按域名隔离）
 
 ```powershell
