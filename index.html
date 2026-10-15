@@ -242,6 +242,17 @@
             var settled = false;
             function ok(d) { if (!settled) { settled = true; onOk(d); } }
             function bad(e) { if (!settled) { settled = true; onErr(e); } }
+
+            // 保险：每次请求前重新确认 SDK 拿得到 titleId，并且强制请求体里带 TitleId。
+            // 少了 TitleId，PlayFab 会回 errorCode 1131 "Could not determine a title id"，
+            // 哪怕请求打在了正确的主机上（已用对照实验验证）。
+            if (!window.PLAYFAB_TITLE_ID || typeof PlayFab === 'undefined' || !PlayFab.settings) {
+                bad({ errorMessage: '站点没配置 PlayFab Title ID（lib/playfab-title.js 没加载成功？）' });
+                return;
+            }
+            PlayFab.settings.titleId = window.PLAYFAB_TITLE_ID;
+            if (!req.TitleId) { req.TitleId = window.PLAYFAB_TITLE_ID; }
+
             try {
                 var p = PlayFab.ClientApi[method](req, function (data, error) {
                     if (error) { bad(error); } else { ok(data); }
