@@ -113,6 +113,43 @@ function assemble() {
     fs.copyFileSync(headers, path.join(OUT, '_headers'));
     log('copied deploy/_headers -> dist/_headers');
   }
+
+  stampCacheTags();
+}
+
+/**
+ * 把 dist 里 HTML 引用的 ?r= / ?v= 换成资源的内容哈希。
+ *
+ * 资源目录是 7 天长缓存（_headers / nginx 里都这么配），标签不变的话浏览器会
+ * 一直用旧包 —— 就算服务器上的文件已经更新了也没用。手工改标签迟早会忘，
+ * 所以每次构建按内容算哈希：内容不变标签不变（不浪费缓存），内容一变标签就变。
+ */
+function stampCacheTags() {
+  const crypto = require('node:crypto');
+  const assets = ['evolve/main.js', 'evolve/evolve.css', 'wiki/wiki.js', 'wiki/wiki.css'];
+  const stamps = {};
+  for (const a of assets) {
+    const f = path.join(OUT, a);
+    if (!fs.existsSync(f)) continue;
+    stamps[a] = crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex').slice(0, 10);
+  }
+  let touched = 0;
+  for (const html of ['index.html', 'wiki.html', 'save.html']) {
+    const f = path.join(OUT, html);
+    if (!fs.existsSync(f)) continue;
+    const before = fs.readFileSync(f, 'utf8');
+    let after = before;
+    for (const [asset, hash] of Object.entries(stamps)) {
+      const esc = asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      after = after.replace(new RegExp(esc + '\\?[rv]=[A-Za-z0-9._-]+', 'g'), asset + '?r=' + hash);
+    }
+    if (after !== before) {
+      fs.writeFileSync(f, after);
+      touched++;
+    }
+  }
+  log(`stamped cache tags in ${touched} html file(s)`);
+  for (const [a, h] of Object.entries(stamps)) log(`  ${a} -> ?r=${h}`);
 }
 
 function report() {
