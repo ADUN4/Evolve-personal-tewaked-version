@@ -193,9 +193,8 @@ async function handleVerifyConfirm(request, env) {
   return json({ ok: true, verifiedToken: token, expiresIn: VERIFIED_TTL });
 }
 
-/** 统一的入口。未匹配的 /api/* 返回 404 JSON，避免落到静态资源层。 */
-export default {
-  async fetch(request, env) {
+/** 路由分发 */
+async function route(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -214,5 +213,22 @@ export default {
 
     // 非 /api/* 的请求交给静态资源层（正常情况下 assets 会先匹配，走不到这里）
     return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: 'not found' }, 404);
+}
+
+/**
+ * 统一入口：兜住所有未捕获异常，返回可读的 JSON，而不是 Cloudflare 的空白 500。
+ * 这样"表还没建"这类问题会直接告诉你怎么修。
+ */
+export default {
+  async fetch(request, env) {
+    try {
+      return await route(request, env);
+    } catch (e) {
+      const detail = String((e && e.message) || e).slice(0, 300);
+      const hint = /no such table/i.test(detail)
+        ? 'D1 里还没建表：去 D1 的 SQL 编辑器执行 deploy/schema.sql'
+        : undefined;
+      return json({ error: '服务端内部错误', detail, hint }, 500);
+    }
   },
 };

@@ -29,20 +29,14 @@
   },
 
   // 邮箱验证码与联机账本用同一个 D1。
-  //
-  // ⚠️ 故意注释掉：database_id 现在是占位符，绑上去会让线上构建失败。
-  //    启用步骤：
-  //      1. Cloudflare 后台 → Workers & Pages → D1 → Create database（名字 evolve）
-  //      2. 把它的 Database ID 填到下面
-  //      3. 取消注释，再推送
-  //    没绑 D1 时 /api/* 会返回"服务端未配置数据库"，但**静态站点完全不受影响**。
-  // "d1_databases": [
-  //   {
-  //     "binding": "DB",
-  //     "database_name": "evolve",
-  //     "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
-  //   }
-  // ],
+  // ⚠️ 表还没建之前，/api/verify/* 会返回 "no such table"（错误 JSON 里会直接提示执行 deploy/schema.sql）。
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "evolve",
+      "database_id": "03624653-2c57-49c2-a1c1-c2a35a6147c9"
+    }
+  ],
 
   // 非机密配置。机密（RESEND_API_KEY 等）用 wrangler secret put，不要写在这里。
   "vars": {
