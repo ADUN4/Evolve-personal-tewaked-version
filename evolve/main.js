@@ -477,7 +477,7 @@ ${y}`)},projectName(){return typeof wt[a].title=="string"?wt[a].title:wt[a].titl
                                     <b-input id="playfab-reg-confirm-password" type="password"></b-input>
                                 </b-field>
                                 <button class="button" :disabled="false" @click="registerPlayFabUser()">\u6CE8\u518C\u8D26\u53F7</button>
-                                <p class="help">\u6CE8\u518C\u540E\u8BF7\u53BB\u90AE\u7BB1\u70B9\u9A8C\u8BC1\u94FE\u63A5\uFF08\u4E5F\u770B\u770B\u5783\u573E\u7BB1\uFF09\u3002\u4EE5\u540E\u6362\u8BBE\u5907\u7528\u540C\u4E00\u4E2A\u90AE\u7BB1\u767B\u5F55\uFF0C\u5C31\u80FD\u4ECE\u4E91\u7AEF\u53D6\u56DE\u8FDB\u5EA6\u3002</p>
+                                <p class="help">\u5BC6\u7801\u8BF7\u81EA\u5DF1\u8BB0\u7262\u3002\u4EE5\u540E\u6362\u8BBE\u5907\u7528\u540C\u4E00\u4E2A\u90AE\u7BB1\u767B\u5F55\uFF0C\u5C31\u80FD\u4ECE\u4E91\u7AEF\u53D6\u56DE\u8FDB\u5EA6\u3002</p>
                             </div>
                         </b-tab-item>
                     </b-tabs>

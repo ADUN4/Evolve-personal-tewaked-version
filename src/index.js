@@ -1482,7 +1482,7 @@ export function index(){
                                     <b-input id="playfab-reg-confirm-password" type="password"></b-input>
                                 </b-field>
                                 <button class="button" :disabled="false" @click="registerPlayFabUser()">注册账号</button>
-                                <p class="help">注册后请去邮箱点验证链接（也看看垃圾箱）。以后换设备用同一个邮箱登录，就能从云端取回进度。</p>
+                                <p class="help">密码请自己记牢。以后换设备用同一个邮箱登录，就能从云端取回进度。</p>
                             </div>
                         </b-tab-item>
                     </b-tabs>
