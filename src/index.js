@@ -1459,28 +1459,30 @@ export function index(){
                         <b-tab-item label="登录">
                             <div class="login-form">
                                 <div class="error" id="playfab-error"></div>
-                                <b-field label="用户名">
-                                    <b-input id="playfab-username"></b-input>
+                                <b-field label="邮箱">
+                                    <b-input id="playfab-email" type="email" placeholder="you@example.com"></b-input>
                                 </b-field>
                                 <b-field label="密码">
                                     <b-input id="playfab-password" type="password"></b-input>
                                 </b-field>
                                 <button class="button" :disabled="false" @click="loginPlayFab()">登录</button>
+                                <button class="button" :disabled="false" @click="recoverPlayFabAccount()">忘记密码</button>
                             </div>
                         </b-tab-item>
                         <b-tab-item label="注册">
                             <div class="login-form">
                                 <div class="error" id="playfab-reg-error"></div>
-                                <b-field label="用户名">
-                                    <b-input id="playfab-reg-username"></b-input>
+                                <b-field label="邮箱">
+                                    <b-input id="playfab-reg-email" type="email" placeholder="you@example.com"></b-input>
                                 </b-field>
-                                <b-field label="密码">
+                                <b-field label="密码（6-100 位）">
                                     <b-input id="playfab-reg-password" type="password"></b-input>
                                 </b-field>
                                 <b-field label="确认密码">
                                     <b-input id="playfab-reg-confirm-password" type="password"></b-input>
                                 </b-field>
                                 <button class="button" :disabled="false" @click="registerPlayFabUser()">注册账号</button>
+                                <p class="help">注册后请去邮箱点验证链接（也看看垃圾箱）。以后换设备用同一个邮箱登录，就能从云端取回进度。</p>
                             </div>
                         </b-tab-item>
                     </b-tabs>

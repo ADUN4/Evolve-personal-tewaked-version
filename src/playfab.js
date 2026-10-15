@@ -1,7 +1,21 @@
 import { global } from './vars';
 import { messageQueue } from './functions.js';
 
-PlayFab.settings.titleId = 'CE351';
+// ---------------------------------------------------------------------------
+// 云存档用的 PlayFab Title ID。
+//
+// 上游默认写死的是 'CE351'（pmotschmann 的公开 title）。你在自己的站点上不该继续
+// 用别人的 title —— 那意味着玩家的账号和存档都存在别人名下，而且不同分叉之间
+// 存档互通。
+//
+// 换成你自己申请的 Title ID，步骤见仓库根目录的 CLOUD-SAVE.md。
+// ---------------------------------------------------------------------------
+PlayFab.settings.titleId = '123A76';
+
+if (PlayFab.settings.titleId === 'YOUR_PLAYFAB_TITLE_ID') {
+    console.warn('[Evolve] PlayFab titleId 尚未配置，云存档不可用。修改 src/playfab.js 第 15 行，或参阅 CLOUD-SAVE.md');
+}
+
 export var playFabId = -1;
 
 export var playFabStats = {
@@ -19,29 +33,35 @@ window.autoSaveToPlayFab = function () {
 }
 setInterval(autoSaveToPlayFab, 30 * 60 * 1000);
 
-window.loginPlayFab =  function(username, pass) {
+// 登录：邮箱 + 密码
+// 无参数调用时会从表单里取（#playfab-email / #playfab-password），
+// 带参数调用用于自动登录（见 tryPlayFabAutoLogin）。
+window.loginPlayFab = function (email, pass) {
     var error = $("#playfab-error");
-    var saveLogin = true;
-    if (!username || !pass) {
-        var nameElem = $("#playfab-username");
+    if (!email || !pass) {
+        var mailElem = $("#playfab-email");
         var passElem = $("#playfab-password");
-            
-        if (nameElem == null || passElem == null) {
+
+        if (mailElem == null || passElem == null) {
             error.html("error");
             return;
         }
         else {
-            username = nameElem.val();
+            email = $.trim(mailElem.val());
             pass = passElem.val();
         }
     }
+    if (!email || !pass) {
+        error.html("请填写邮箱和密码");
+        return;
+    }
     var requestData = {
-        Username: username,
+        Email: email,
         Password: pass
     }
     try {
-        storeTempPlayFabInfo(username, pass);
-        PlayFab.ClientApi.LoginWithPlayFab(requestData, playFabLoginCallback).catch(function (error) { 
+        storeTempPlayFabInfo(email, pass);
+        PlayFab.ClientApi.LoginWithEmailAddress(requestData, playFabLoginCallback).catch(function (error) {
             var err = Object.values(error.errorDetails).join('<br>');
             $('#playfab-error').html(err);
         });
@@ -51,13 +71,16 @@ window.loginPlayFab =  function(username, pass) {
         error.html("连接不上PlayFab服务");
     }
 }
+
+// 注册：邮箱 + 密码
+// PlayFab 会往该邮箱发验证邮件；未验证的邮箱通常也能登录，但找回密码依赖它。
 window.registerPlayFabUser = function () {
     var error = $("#playfab-reg-error");
 
-    var nameElem = $("#playfab-reg-username");
+    var mailElem = $("#playfab-reg-email");
     var passElem = $("#playfab-reg-password");
     var confirmPasswordElem = $("#playfab-reg-confirm-password");
-    if (nameElem == null || passElem == null || confirmPasswordElem == null) {
+    if (mailElem == null || passElem == null || confirmPasswordElem == null) {
         //Elements required to register are missing, rebuild login screen
         error.html('请填写完整');
         return;
@@ -66,16 +89,54 @@ window.registerPlayFabUser = function () {
         error.html("两次密码不一致");
         return;
     }
+    var email = $.trim(mailElem.val());
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        error.html("请填写正确的邮箱地址");
+        return;
+    }
+    // PlayFab 的密码规则是 6-100 个字符
+    var pass = passElem.val();
+    if (pass.length < 6 || pass.length > 100) {
+        error.html("密码长度需要 6-100 位");
+        return;
+    }
     var requestData = {
-        Username: nameElem.val(),
-        Password: passElem.val(),
+        Email: email,
+        Password: pass,
         RequireBothUsernameAndEmail: false
     }
-    storeTempPlayFabInfo(nameElem.val(), passElem.val());
-    PlayFab.ClientApi.RegisterPlayFabUser(requestData, playFabLoginCallback).catch(function (error) { 
+    storeTempPlayFabInfo(email, pass);
+    PlayFab.ClientApi.RegisterPlayFabUser(requestData, playFabLoginCallback).catch(function (error) {
         var err = Object.values(error.errorDetails).join('<br>');
         $('#playfab-reg-error').html(err);
     });
+}
+
+// 找回密码：让 PlayFab 往注册邮箱发重置邮件
+window.recoverPlayFabAccount = function () {
+    var error = $("#playfab-error");
+    var mailElem = $("#playfab-email");
+    if (mailElem == null) {
+        return;
+    }
+    var email = $.trim(mailElem.val());
+    if (!email) {
+        error.html("请先在上面填写注册时用的邮箱");
+        return;
+    }
+    try {
+        PlayFab.ClientApi.SendAccountRecoveryEmail({ Email: email }, function (data, err) {
+            if (err) {
+                error.html("发送失败，请确认这个邮箱是否已经注册过");
+                return;
+            }
+            error.html("重置密码的邮件已发出，请查收（也看看垃圾箱）");
+        });
+    }
+    catch (e) {
+        console.log(e);
+        error.html("连接不上PlayFab服务");
+    }
 }
 
 
@@ -104,11 +165,20 @@ function playFabLoginCallback(data, error) {
         var tempuser = readTempPlayFabInfo();
         storePlayFabInfo(tempuser[0], tempuser[1]);
         playFabStats.loginName = tempuser[0];
-        playFabStats.loginStat = '已登录(' + playFabStats.loginName + ')';
+        playFabStats.loginStat = '已登录(' + maskEmail(playFabStats.loginName) + ')';
         playFabId = data.data.PlayFabId;
         $('.login-content input').val('');
         playFabSaveCheck();
     }
+}
+
+// 界面上不直接显示完整邮箱
+function maskEmail(email) {
+    if (typeof email !== 'string' || email.indexOf('@') === -1) return email;
+    var parts = email.split('@');
+    var name = parts[0];
+    var visible = name.length <= 2 ? name.charAt(0) : name.substring(0, 2);
+    return visible + '***@' + parts[1];
 }
 
 function cancelPlayFab() {
@@ -257,6 +327,9 @@ function loadFromPlayFabCallback(data, error) {
     }
 }
 
+// 注意：这里把邮箱和密码明文存在 localStorage 里（继承自上游实现），
+// 只对同源脚本可见，且本站已移除第三方脚本，风险可控但不是最佳实践。
+// 想更稳妥可以改成存 PlayFab 返回的 SessionTicket（换设备时失效，需要重新登录）。
 function storePlayFabInfo(name, pass) {
     try {
         localStorage.setItem("playFabName", name);
