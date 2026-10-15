@@ -170,23 +170,36 @@
                 <label for="gate-email">邮箱</label>
                 <input id="gate-email" type="email" autocomplete="username" placeholder="you@example.com" spellcheck="false">
 
-                <label for="gate-password">密码</label>
-                <input id="gate-password" type="password" autocomplete="current-password">
+                <!-- 登录：已有账号直接邮箱 + 密码 -->
+                <div id="gate-login-box">
+                    <label for="gate-password">密码</label>
+                    <input id="gate-password" type="password" autocomplete="current-password">
+                    <div class="gate-row">
+                        <button id="gate-login">登录</button>
+                        <button id="gate-reg-toggle" class="ghost">注册新账号</button>
+                    </div>
+                    <div class="gate-links">
+                        <a href="#" id="gate-forgot">忘记密码</a>
+                        <a href="#" id="gate-retry" style="display:none; margin-left:1rem;">重试</a>
+                    </div>
+                </div>
 
+                <!-- 注册：必须先通过邮箱验证码，才允许创建账号 -->
                 <div id="gate-regbox" style="display:none">
-                    <label for="gate-password2">确认密码（6-100 位）</label>
-                    <input id="gate-password2" type="password" autocomplete="new-password">
-                    <p class="gate-help">密码请自己记牢。忘记密码时系统会往这个邮箱发重置邮件，所以填一个你真能收到的邮箱。</p>
-                </div>
-
-                <div class="gate-row">
-                    <button id="gate-login">登录</button>
-                    <button id="gate-reg-toggle" class="ghost">注册新账号</button>
-                    <button id="gate-register" style="display:none">确认注册</button>
-                </div>
-                <div class="gate-links">
-                    <a href="#" id="gate-forgot">忘记密码</a>
-                    <a href="#" id="gate-retry" style="display:none; margin-left:1rem;">重试</a>
+                    <label for="gate-code">邮箱验证码</label>
+                    <div style="display:flex; gap:.5rem;">
+                        <input id="gate-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 位数字" style="flex:1;">
+                        <button id="gate-send-code" class="ghost" style="margin:0; white-space:nowrap;">发送验证码</button>
+                    </div>
+                    <label for="gate-reg-password">设置密码（6-100 位）</label>
+                    <input id="gate-reg-password" type="password" autocomplete="new-password">
+                    <label for="gate-reg-password2">确认密码</label>
+                    <input id="gate-reg-password2" type="password" autocomplete="new-password">
+                    <p class="gate-help">必须先通过邮箱验证码才能注册。验证码 10 分钟内有效，没收到就看看垃圾邮件。</p>
+                    <div class="gate-row">
+                        <button id="gate-register">完成注册</button>
+                        <button id="gate-reg-cancel" class="ghost">返回登录</button>
+                    </div>
                 </div>
             </div>
 
@@ -333,15 +346,84 @@
                 function () { finishSync(null); });   // 读不到就当云端为空，别卡住玩家
         }
 
-        function showForm(extra) {
+        var K_VERIFIED = 'evolveVerifiedEmail';   // 已通过验证码的邮箱
+        var K_VTOKEN = 'evolveVerifiedToken';     // 服务端发的一次性 token（阶段 1 绑定账号时用）
+
+        // 调我们自己的 Worker API（与 PlayFab 无关）
+        function postJson(path, payload, onOk, onErr) {
+            try {
+                fetch(path, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).then(function (res) {
+                    return res.json().catch(function () { return {}; }).then(function (data) {
+                        if (res.ok && data && data.ok) { onOk(data); }
+                        else { onErr((data && (data.error || data.hint)) || ('HTTP ' + res.status)); }
+                    });
+                }).catch(function (e) { onErr('网络请求失败：' + ((e && e.message) || e)); });
+            } catch (e) { onErr('请求异常：' + ((e && e.message) || e)); }
+        }
+
+        var codeTimer = null;
+        function startCodeCountdown(seconds) {
+            var btn = el('gate-send-code');
+            var left = seconds;
+            if (codeTimer) { clearInterval(codeTimer); }
+            btn.disabled = true;
+            btn.textContent = '重发(' + left + 's)';
+            codeTimer = setInterval(function () {
+                left--;
+                if (left <= 0) {
+                    clearInterval(codeTimer); codeTimer = null;
+                    btn.disabled = false;
+                    btn.textContent = '发送验证码';
+                } else {
+                    btn.textContent = '重发(' + left + 's)';
+                }
+            }, 1000);
+        }
+
+        function showLoginMode() {
             el('gate-choice').style.display = 'none';
             el('gate-form').style.display = 'block';
+            el('gate-login-box').style.display = 'block';
             el('gate-regbox').style.display = 'none';
-            el('gate-register').style.display = 'none';
-            el('gate-reg-toggle').style.display = '';
-            el('gate-login').style.display = '';
-            el('gate-retry').style.display = extra ? '' : 'none';
+            el('gate-retry').style.display = 'none';
             busy(false);
+        }
+
+        function showRegisterMode() {
+            el('gate-choice').style.display = 'none';
+            el('gate-form').style.display = 'block';
+            el('gate-login-box').style.display = 'none';
+            el('gate-regbox').style.display = 'block';
+            busy(false);
+        }
+
+        // 兼容旧调用（boot 里用的名字）
+        function showForm(extra) {
+            showLoginMode();
+            if (extra) { el('gate-retry').style.display = ''; }
+        }
+
+        function doRequestCode() {
+            var email = (el('gate-email').value || '').trim();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg('请先填写正确的邮箱地址', 'bad'); return; }
+            msg('正在发送验证码…');
+            el('gate-send-code').disabled = true;
+            postJson('/api/verify/request', { email: email },
+                function () {
+                    msg('验证码已发到 ' + email + '，请查收（也看看垃圾邮件）。10 分钟内有效。', 'ok');
+                    startCodeCountdown(60);
+                    el('gate-code').focus();
+                },
+                function (e) {
+                    msg(e, 'bad');
+                    var m = /请等 (\d+) 秒/.exec(e);
+                    if (m) { startCodeCountdown(parseInt(m[1], 10)); }
+                    else { el('gate-send-code').disabled = false; }
+                });
         }
 
         function doLogin(email, pass, silent) {
@@ -367,19 +449,38 @@
 
         function doRegister() {
             var email = (el('gate-email').value || '').trim();
-            var pass = el('gate-password').value || '';
-            var pass2 = el('gate-password2').value || '';
+            var code = (el('gate-code').value || '').trim();
+            var pass = el('gate-reg-password').value || '';
+            var pass2 = el('gate-reg-password2').value || '';
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg('请填写正确的邮箱地址', 'bad'); return; }
+            if (!/^\d{6}$/.test(code)) { msg('请填写邮件里的 6 位数字验证码', 'bad'); return; }
             if (pass !== pass2) { msg('两次密码不一致', 'bad'); return; }
             if (pass.length < 6 || pass.length > 100) { msg('密码长度需要 6-100 位', 'bad'); return; }
-            msg('正在注册…'); busy(true);
-            callApi('RegisterPlayFabUser', { Email: email, Password: pass, RequireBothUsernameAndEmail: false },
-                function () {
-                    lsSet(K_MAIL, email);
-                    lsSet(K_PASS, pass);
-                    afterLogin();
+
+            msg('正在校验验证码…'); busy(true);
+
+            // 第一步：先过我们自己服务端的验证码。过不了就绝不允许创建账号。
+            postJson('/api/verify/confirm', { email: email, code: code },
+                function (data) {
+                    lsSet(K_VERIFIED, email);
+                    lsSet(K_VTOKEN, data.verifiedToken || '');
+                    msg('邮箱已验证，正在创建账号…');
+                    // 第二步：验证通过后才调 PlayFab 注册
+                    callApi('RegisterPlayFabUser', { Email: email, Password: pass, RequireBothUsernameAndEmail: false },
+                        function () {
+                            lsSet(K_MAIL, email);
+                            lsSet(K_PASS, pass);
+                            afterLogin();
+                        },
+                        function (e) {
+                            busy(false);
+                            msg('注册失败：' + errText(e) + '（如果这个邮箱已经注册过，请点「返回登录」直接登录）', 'bad');
+                        });
                 },
-                function (e) { busy(false); msg('注册失败：' + errText(e), 'bad'); });
+                function (e) {
+                    busy(false);
+                    msg('验证码校验失败：' + e, 'bad');
+                });
         }
 
         function doForgot() {
@@ -399,18 +500,23 @@
                 doLogin(email, pass, false);
             };
             el('gate-reg-toggle').onclick = function () {
-                el('gate-regbox').style.display = 'block';
-                el('gate-register').style.display = '';
-                el('gate-login').style.display = 'none';
-                el('gate-reg-toggle').style.display = 'none';
-                msg('填好两次密码后点「确认注册」');
+                showRegisterMode();
+                msg('先点「发送验证码」，用邮件里的 6 位码完成验证后才能注册');
             };
+            el('gate-reg-cancel').onclick = function () { showLoginMode(); msg(''); };
+            el('gate-send-code').onclick = doRequestCode;
             el('gate-register').onclick = doRegister;
             el('gate-forgot').onclick = function (ev) { ev.preventDefault(); doForgot(); };
             el('gate-retry').onclick = function (ev) { ev.preventDefault(); boot(); };
-            ['gate-email', 'gate-password', 'gate-password2'].forEach(function (id) {
+            ['gate-email', 'gate-password', 'gate-reg-password', 'gate-reg-password2', 'gate-code'].forEach(function (id) {
                 var node = el(id);
-                if (node) { node.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { el('gate-login').click(); } }); }
+                if (node) {
+                    node.addEventListener('keydown', function (ev) {
+                        if (ev.key !== 'Enter') { return; }
+                        if (el('gate-regbox').style.display === 'block') { el('gate-register').click(); }
+                        else { el('gate-login').click(); }
+                    });
+                }
             });
         }
 
