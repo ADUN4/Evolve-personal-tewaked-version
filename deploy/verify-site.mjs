@@ -227,7 +227,8 @@ const pad = (s, n) => String(s).padEnd(n);
     if (ext.length) warnings.push(`${page} loads third-party resources: ${ext.join(', ')}`);
   }
 
-  for (const s of ['strings/strings.json', 'strings/strings.zh-CN.json', 'strings/strings.zh-TW.json']) queue.add(s);
+  // index.html 的登录门是动态注入 evolve/main.js 的，静态扫描看不到它，显式补上。
+  for (const s of ['evolve/main.js', 'strings/strings.json', 'strings/strings.zh-CN.json', 'strings/strings.zh-TW.json']) queue.add(s);
 
   const rows = [];
   for (const rel of queue) rows.push(await check(base, rel));

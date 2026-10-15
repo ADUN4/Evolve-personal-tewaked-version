@@ -4,16 +4,16 @@ import { messageQueue } from './functions.js';
 // ---------------------------------------------------------------------------
 // 云存档用的 PlayFab Title ID。
 //
-// 上游默认写死的是 'CE351'（pmotschmann 的公开 title）。你在自己的站点上不该继续
-// 用别人的 title —— 那意味着玩家的账号和存档都存在别人名下，而且不同分叉之间
-// 存档互通。
+// 上游默认写死的是 'CE351'（pmotschmann 的公开 title）。本站已换成自己的 title；
+// 继续用别人的意味着玩家的账号和存档都存在别人名下，而且不同分叉之间存档互通。
 //
-// 换成你自己申请的 Title ID，步骤见仓库根目录的 CLOUD-SAVE.md。
+// Title ID 的单一来源是 lib/playfab-title.js —— index.html 的登录门和这里读同一个值，
+// 只需要改那一处。配置步骤见仓库根目录的 CLOUD-SAVE.md。
 // ---------------------------------------------------------------------------
-PlayFab.settings.titleId = '123A76';
+PlayFab.settings.titleId = (typeof window !== 'undefined' && window.PLAYFAB_TITLE_ID) ? window.PLAYFAB_TITLE_ID : '';
 
-if (PlayFab.settings.titleId === 'YOUR_PLAYFAB_TITLE_ID') {
-    console.warn('[Evolve] PlayFab titleId 尚未配置，云存档不可用。修改 src/playfab.js 第 15 行，或参阅 CLOUD-SAVE.md');
+if (!PlayFab.settings.titleId) {
+    console.warn('[Evolve] 没拿到 PlayFab titleId，云存档不可用。检查 lib/playfab-title.js 是否加载成功（或翻 CLOUD-SAVE.md）');
 }
 
 export var playFabId = -1;
@@ -140,7 +140,24 @@ window.recoverPlayFabAccount = function () {
 }
 
 
+// index.html 的登录门（强制登录）成功后写入这个标记
+export const LOGIN_REQUIRED_KEY = 'evolveLoginRequired';
+
+export function isLoginRequired() {
+    try {
+        return localStorage.getItem(LOGIN_REQUIRED_KEY) === '1';
+    } catch (e) {
+        return false;
+    }
+}
+
 export function tryPlayFabAutoLogin() {
+    // 站点开了强制登录，就无条件打开云存档开关。
+    // 老存档里的 settings.onlineSave 可能是 false，不强制打开的话
+    // saveToPlayFab 会直接 return，登录了也不会往云上存。
+    if (isLoginRequired()) {
+        global.settings.onlineSave = true;
+    }
     var type = global.settings.onlineSave;
     //-1 = not set, 1 = Kongregate, 2 = PlayFab
     if (type == false) {
@@ -223,6 +240,9 @@ function playFabFinishLogin(downloadFirst) {
 
 function saveToPlayFab(saveString) {
     if (global.beta) return;
+    // 站点开了强制登录，云存档就是必须的：即使玩家在设置里把开关关掉，
+    // 也照样上传，否则「登录了但进度没上云」会变成最坑人的那种 bug。
+    if (isLoginRequired()) { global.settings.onlineSave = true; }
     if (!global.settings.onlineSave) return;
     if (!playFabId || typeof PlayFab === 'undefined' || typeof PlayFab.ClientApi === 'undefined') return false;
     var requestData = {

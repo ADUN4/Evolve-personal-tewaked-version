@@ -18,8 +18,10 @@
     <script src="lib/Sortable.min.js"></script>
     <script src="lib/chart.min.js"></script>
     <script src="lib/lodash.min.js"></script>
-    <script src="lib/PlayFabClientApi.js"></script>
     <script src="lib/moment.js"></script>
+    <script src="lib/lz-string.min.js"></script>
+    <script src="lib/PlayFabClientApi.js"></script>
+    <script src="lib/playfab-title.js"></script>
 <!--
     <script src="https://unpkg.com/jquery@3.6.3/dist/jquery.min.js" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/vue@2.7.14/dist/vue.min.js" crossorigin="anonymous"></script>
@@ -28,9 +30,7 @@
     <script src="https://unpkg.com/sortablejs@1.10.2/Sortable.min.js" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/chart.js@3.8.2/dist/chart.min.js" crossorigin="anonymous"></script>
 -->
-    <script src="lib/lz-string.min.js"></script>
-
-    <script src="evolve/main.js?r=20240116" type="module"></script>
+    <!-- 注意：evolve/main.js 不在这里静态加载，由下方登录门在登录成功后注入 -->
 </head>
 <body>
 <!--          <script src="zh/core.js"></script> -->
@@ -63,8 +63,368 @@
                 transform: rotate(360deg);
             }
         }
-    </style>
-    <div class="loading"><div class="lds-dual-ring"></div></div>
 
+        /* ---------- 登录门 ---------- */
+        #login-gate {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: #14161a;
+            color: #e8e6e3;
+            font-family: "Lato", "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+            overflow: auto;
+        }
+        #login-gate .gate-card {
+            width: 100%;
+            max-width: 26rem;
+            background: #1d2026;
+            border: 1px solid #2c3038;
+            border-radius: 10px;
+            padding: 1.75rem;
+            box-shadow: 0 12px 40px rgba(0,0,0,.45);
+        }
+        #login-gate h1 {
+            margin: 0 0 .25rem;
+            font-size: 1.5rem;
+            letter-spacing: .02em;
+        }
+        #login-gate .gate-sub {
+            margin: 0 0 1rem;
+            font-size: .85rem;
+            color: #9aa2ad;
+            line-height: 1.5;
+        }
+        #login-gate label {
+            display: block;
+            margin: .75rem 0 .25rem;
+            font-size: .8rem;
+            color: #9aa2ad;
+        }
+        #login-gate input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: .55rem .7rem;
+            font-size: .95rem;
+            color: #e8e6e3;
+            background: #14161a;
+            border: 1px solid #333844;
+            border-radius: 6px;
+            outline: none;
+        }
+        #login-gate input:focus { border-color: #4a83d6; }
+        #login-gate button {
+            margin: .9rem .5rem 0 0;
+            padding: .55rem 1.1rem;
+            font-size: .9rem;
+            color: #fff;
+            background: #3b6fc4;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        #login-gate button.ghost {
+            color: #c8ccd4;
+            background: transparent;
+            border: 1px solid #3a4049;
+        }
+        #login-gate button:hover { filter: brightness(1.1); }
+        #login-gate button[disabled] { opacity: .55; cursor: default; filter: none; }
+        #login-gate .gate-msg {
+            min-height: 1.2rem;
+            margin: .25rem 0 .5rem;
+            font-size: .82rem;
+            line-height: 1.5;
+            color: #9aa2ad;
+            word-break: break-word;
+        }
+        #login-gate .gate-msg.bad { color: #e0736f; }
+        #login-gate .gate-msg.ok { color: #6dbf7a; }
+        #login-gate .gate-help {
+            margin: .5rem 0 0;
+            font-size: .78rem;
+            color: #7d848f;
+            line-height: 1.6;
+        }
+        #login-gate .gate-links { margin-top: .6rem; }
+        #login-gate .gate-links a {
+            color: #7fa8e0;
+            font-size: .8rem;
+            text-decoration: none;
+        }
+        #login-gate .gate-links a:hover { text-decoration: underline; }
+        #login-gate .gate-choice-btns { margin-top: .5rem; }
+    </style>
+
+    <!-- 登录门：登录成功前不加载游戏，玩家必须先有账号 -->
+    <div id="login-gate">
+        <div class="gate-card">
+            <h1>进化 - Evolve</h1>
+            <p class="gate-sub">本站需要登录后才能游玩。进度保存在你的邮箱账号上，换设备用同一邮箱登录即可取回。</p>
+            <div id="gate-msg" class="gate-msg"></div>
+
+            <div id="gate-form" style="display:none">
+                <label for="gate-email">邮箱</label>
+                <input id="gate-email" type="email" autocomplete="username" placeholder="you@example.com" spellcheck="false">
+
+                <label for="gate-password">密码</label>
+                <input id="gate-password" type="password" autocomplete="current-password">
+
+                <div id="gate-regbox" style="display:none">
+                    <label for="gate-password2">确认密码（6-100 位）</label>
+                    <input id="gate-password2" type="password" autocomplete="new-password">
+                    <p class="gate-help">注册后请去邮箱点验证链接（也看看垃圾箱）。现在不验证也能玩，但找回密码依赖这个邮箱。</p>
+                </div>
+
+                <div class="gate-row">
+                    <button id="gate-login">登录</button>
+                    <button id="gate-reg-toggle" class="ghost">注册新账号</button>
+                    <button id="gate-register" style="display:none">确认注册</button>
+                </div>
+                <div class="gate-links">
+                    <a href="#" id="gate-forgot">忘记密码</a>
+                    <a href="#" id="gate-retry" style="display:none; margin-left:1rem;">重试</a>
+                </div>
+            </div>
+
+            <div id="gate-choice" style="display:none">
+                <p class="gate-sub">检测到<b>本地</b>和<b>云端</b>都有存档，请选择这一台设备要用哪一份：</p>
+                <div class="gate-choice-btns">
+                    <button id="gate-use-cloud">用云端存档</button>
+                    <button id="gate-use-local" class="ghost">用本地存档（并覆盖云端）</button>
+                </div>
+                <p class="gate-help">选之前会先把当前本地存档备份到浏览器里，选错了还能救。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading" id="boot-loading" style="display:none"><div class="lds-dual-ring"></div></div>
+
+    <script>
+    (function () {
+        'use strict';
+
+        var K_MAIL = 'playFabName';          // 与游戏内保持一致
+        var K_PASS = 'playFabPass';
+        var K_REQ = 'evolveLoginRequired';   // 登录门标记，游戏侧读它来强制打开云存档
+        var K_BAK = 'evolveGateBak';         // 覆盖前的本地存档备份
+        var GAME_SRC = 'evolve/main.js?r=20261014';
+
+        function el(id) { return document.getElementById(id); }
+
+        function msg(text, kind) {
+            var box = el('gate-msg');
+            box.className = 'gate-msg' + (kind ? ' ' + kind : '');
+            box.innerHTML = text || '';
+        }
+
+        function errText(error) {
+            if (!error) { return '请求失败'; }
+            if (typeof error === 'string') { return error; }
+            if (error.errorMessage) { return error.errorMessage; }
+            try { return Object.values(error.errorDetails).join(' / '); } catch (e) { return '请求失败'; }
+        }
+
+        function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+        function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+        function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+        function storedCreds() {
+            var m = lsGet(K_MAIL), p = lsGet(K_PASS);
+            return (m && p) ? [m, p] : null;
+        }
+
+        // PlayFab SDK 既走回调也返回 promise，这里统一收口，避免同一次请求报两次错
+        function callApi(method, req, onOk, onErr) {
+            var settled = false;
+            function ok(d) { if (!settled) { settled = true; onOk(d); } }
+            function bad(e) { if (!settled) { settled = true; onErr(e); } }
+            try {
+                var p = PlayFab.ClientApi[method](req, function (data, error) {
+                    if (error) { bad(error); } else { ok(data); }
+                });
+                if (p && typeof p.catch === 'function') { p.catch(bad); }
+            } catch (e) { bad(e); }
+        }
+
+        function busy(on) {
+            ['gate-login', 'gate-reg-toggle', 'gate-register'].forEach(function (id) {
+                var b = el(id);
+                if (b) { b.disabled = !!on; }
+            });
+        }
+
+        function startGame() {
+            lsSet(K_REQ, '1');
+            el('login-gate').style.display = 'none';
+            el('boot-loading').style.display = 'block';
+            var s = document.createElement('script');
+            s.type = 'module';
+            s.src = GAME_SRC;
+            document.body.appendChild(s);
+        }
+
+        function applyCloudSave(b64, done) {
+            try {
+                var obj = JSON.parse(LZString.decompressFromBase64(b64));
+                var prev = lsGet('evolved');
+                if (prev) { lsSet(K_BAK, prev); }
+                lsSet('evolved', LZString.compressToUTF16(JSON.stringify(obj)));
+            } catch (e) {
+                msg('云端存档解析失败，已保留本地存档，请把存档串发给我排查', 'bad');
+                return;
+            }
+            done();
+        }
+
+        function uploadLocalSave(done) {
+            var local = lsGet('evolved');
+            if (!local) { return done(); }
+            var b64 = null, days = 0;
+            try {
+                var obj = JSON.parse(LZString.decompressFromUTF16(local));
+                b64 = LZString.compressToBase64(JSON.stringify(obj));
+                if (obj && obj.stats) { days = (obj.stats.days || 0) + (obj.stats.tdays || 0); }
+            } catch (e) { return done(); }
+            msg('正在把本地存档备份到云端…');
+            callApi('UpdateUserData', { Data: { saveString: b64, gameTotalDays: days } },
+                function () { done(); },
+                function () { msg('本地存档上传失败，先让你进游戏（云端仍是旧档）', 'bad'); done(); });
+        }
+
+        function chooseSave(cloud) {
+            el('gate-form').style.display = 'none';
+            el('gate-choice').style.display = 'block';
+            msg('云端存档时间和本地不同，请选一份', '');
+            el('gate-use-cloud').onclick = function () { applyCloudSave(cloud, startGame); };
+            el('gate-use-local').onclick = function () { uploadLocalSave(startGame); };
+        }
+
+        function finishSync(cloud) {
+            var local = lsGet('evolved');
+            if (cloud && local) { return chooseSave(cloud); }
+            if (cloud) { msg('正在载入云端存档…'); return applyCloudSave(cloud, startGame); }
+            if (local) { return uploadLocalSave(startGame); }
+            startGame();
+        }
+
+        function afterLogin() {
+            msg('正在检查云端存档…');
+            callApi('GetUserData', { Keys: ['saveString'] },
+                function (data) {
+                    var cloud = null;
+                    try { cloud = data.data.Data.saveString.Value; } catch (e) { cloud = null; }
+                    finishSync(cloud);
+                },
+                function () { finishSync(null); });   // 读不到就当云端为空，别卡住玩家
+        }
+
+        function showForm(extra) {
+            el('gate-choice').style.display = 'none';
+            el('gate-form').style.display = 'block';
+            el('gate-regbox').style.display = 'none';
+            el('gate-register').style.display = 'none';
+            el('gate-reg-toggle').style.display = '';
+            el('gate-login').style.display = '';
+            el('gate-retry').style.display = extra ? '' : 'none';
+            busy(false);
+        }
+
+        function doLogin(email, pass, silent) {
+            if (!silent) { msg('正在登录…'); busy(true); }
+            callApi('LoginWithEmailAddress', { Email: email, Password: pass },
+                function () {
+                    lsSet(K_MAIL, email);
+                    lsSet(K_PASS, pass);
+                    afterLogin();
+                },
+                function (e) {
+                    busy(false);
+                    if (silent) {
+                        // 自动登录失败（密码改了/账号没了），退回表单让玩家手动来
+                        lsDel(K_MAIL);
+                        lsDel(K_PASS);
+                        showForm();
+                        return;
+                    }
+                    msg('登录失败：' + errText(e), 'bad');
+                });
+        }
+
+        function doRegister() {
+            var email = (el('gate-email').value || '').trim();
+            var pass = el('gate-password').value || '';
+            var pass2 = el('gate-password2').value || '';
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg('请填写正确的邮箱地址', 'bad'); return; }
+            if (pass !== pass2) { msg('两次密码不一致', 'bad'); return; }
+            if (pass.length < 6 || pass.length > 100) { msg('密码长度需要 6-100 位', 'bad'); return; }
+            msg('正在注册…'); busy(true);
+            callApi('RegisterPlayFabUser', { Email: email, Password: pass, RequireBothUsernameAndEmail: false },
+                function () {
+                    lsSet(K_MAIL, email);
+                    lsSet(K_PASS, pass);
+                    afterLogin();
+                },
+                function (e) { busy(false); msg('注册失败：' + errText(e), 'bad'); });
+        }
+
+        function doForgot() {
+            var email = (el('gate-email').value || '').trim();
+            if (!email) { msg('请先填写邮箱，再点忘记密码', 'bad'); return; }
+            msg('正在发送重置邮件…');
+            callApi('SendAccountRecoveryEmail', { Email: email },
+                function () { msg('重置密码的邮件已发出，请查收（也看看垃圾箱）', 'ok'); },
+                function (e) { msg('发送失败：' + errText(e), 'bad'); });
+        }
+
+        function bind() {
+            el('gate-login').onclick = function () {
+                var email = (el('gate-email').value || '').trim();
+                var pass = el('gate-password').value || '';
+                if (!email || !pass) { msg('请填写邮箱和密码', 'bad'); return; }
+                doLogin(email, pass, false);
+            };
+            el('gate-reg-toggle').onclick = function () {
+                el('gate-regbox').style.display = 'block';
+                el('gate-register').style.display = '';
+                el('gate-login').style.display = 'none';
+                el('gate-reg-toggle').style.display = 'none';
+                msg('填好两次密码后点「确认注册」');
+            };
+            el('gate-register').onclick = doRegister;
+            el('gate-forgot').onclick = function (ev) { ev.preventDefault(); doForgot(); };
+            el('gate-retry').onclick = function (ev) { ev.preventDefault(); boot(); };
+            ['gate-email', 'gate-password', 'gate-password2'].forEach(function (id) {
+                var node = el(id);
+                if (node) { node.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { el('gate-login').click(); } }); }
+            });
+        }
+
+        function boot() {
+            msg('正在连接服务器…');
+            if (!window.PlayFab || !PlayFab.ClientApi) { msg('PlayFab SDK 没加载成功，请刷新页面重试', 'bad'); return; }
+            var titleId = window.PLAYFAB_TITLE_ID;
+            if (!titleId) { msg('站点没配置 PlayFab Title ID（lib/playfab-title.js），请联系站长', 'bad'); return; }
+            PlayFab.settings.titleId = titleId;
+            bind();
+            var creds = storedCreds();
+            if (creds) {
+                doLogin(creds[0], creds[1], true);
+            } else {
+                showForm();
+                msg('');
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', boot);
+        } else {
+            boot();
+        }
+    })();
+    </script>
 </body>
 </html>
