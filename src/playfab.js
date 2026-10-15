@@ -293,6 +293,29 @@ window.syncNow = function () {
     autoSaveToPlayFab();
 }
 
+// 登出：先把当前进度推一次云端，再清掉本地凭据并回到登录门。
+// evolveLoginRequired 是站点级标记，**不清** —— 清了游戏就不再强制打开云存档开关了。
+window.logoutPlayFab = function () {
+    try {
+        if (playFabId && global.settings.onlineSave) {
+            saveToPlayFab(LZString.compressToBase64(JSON.stringify(global)));
+        }
+    } catch (e) { console.log(e); }
+    playFabId = -1;
+    playFabStats.isLogin = false;
+    playFabStats.loginStat = '未登录';
+    playFabStats.loginName = '';
+    try {
+        localStorage.removeItem('playFabName');
+        localStorage.removeItem('playFabPass');
+        localStorage.removeItem('playFabNameTemp');
+        localStorage.removeItem('playFabPassTemp');
+    } catch (e) { console.log(e); }
+    messageQueue('已登出，正在返回登录页…', 'info');
+    // 留一点时间让最后那次备份发出去
+    setTimeout(function () { location.reload(); }, 1500);
+};
+
 function importFromPlayFab() {
     if (!playFabId || typeof PlayFab === 'undefined' || typeof PlayFab.ClientApi === 'undefined') return false;
     var requestData = {

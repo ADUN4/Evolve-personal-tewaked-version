@@ -1451,8 +1451,8 @@ export function index(){
             <button class="button right" @click="restoreGame"><span class="settings9" aria-label="${loc('settings9')}">{{ 'restore' | label }}</span></button>
         </div>
         <div class="online-save">
-            <b-collapse :open="s.onlineSave">
-            <b-switch v-model="s.onlineSave" slot="trigger">启用云存档(PlayFab)</b-switch>
+            <b-collapse :open="true">
+            <span slot="trigger">云存档（已登录，自动同步）</span>
                 <div class="content">
                     <div class="login-content">
                     <b-tabs>
@@ -1494,6 +1494,7 @@ export function index(){
                             云端存档时间: {{ playFabStats.playFabSaveTime | dateFormat}} <br>
                             <button class="button" :disabled="false" @click="importFromPlayFab()">从云端导入存档(注意提前备份本地存档)</button>
                             <button class="button" :disabled="false" @click="syncNow()">立即备份到云端</button>
+                            <button class="button" :disabled="false" @click="logoutPlayFab()">登出</button>
                         </p>
                     </div>
                 </div>
