@@ -1,29 +1,51 @@
-// Cloudflare Workers configuration for this static site.
+// Cloudflare Workers configuration for this project.
 //
-// This file is required by the Workers Builds flow, where the Git integration
-// asks for a "Build command", a "Deploy command" and a "Preview command"
-// instead of the classic Pages "Build output directory" field.
+// 形态：静态资源（dist/）+ 一个 Worker 脚本（src/worker.js）
+//   Build command   : node deploy/make-dist.mjs      -> 产出 ./dist
+//   Deploy command  : npx wrangler deploy            -> 读本文件，上传 dist 到 assets，并部署 worker.js
+//   Preview command : npx wrangler versions upload
 //
-// How the three fields map to this project:
-//   Build command   : node deploy/make-dist.mjs      <- produces ./dist
-//   Deploy command  : npx wrangler deploy            <- reads THIS file, uploads ./dist
-//   Preview command : npx wrangler versions upload   <- same, as a preview version
+// 路由：静态资源默认优先匹配，所以没有同名文件的 /api/* 会落到 worker.js。
 //
-// The static site is served straight from ./dist; there is no Worker script.
+// ⚠️ 下面的 d1_databases.database_id 是占位符。
+//    在 Cloudflare 后台建好 D1 数据库、把真实 ID 填进来之前不要推送 ——
+//    否则线上构建会失败（旧版本会继续服务，但站点停止更新）。
 {
-  // Must match the Worker name you create in the dashboard.
-  // If you picked a different project name, change this value to match it.
   "name": "evolve",
 
-  // Required by Workers. Any past date is valid; bump it when you want to opt
-  // in to newer runtime behaviour. Static assets do not run any script code.
+  // 新增：Worker 脚本。加了它之后本项目不再是"纯静态"。
+  "main": "src/worker.js",
+
+  // Workers 要求的兼容日期，填过去的日期即可
   "compatibility_date": "2025-01-01",
 
   "assets": {
-    // Relative to this file. deploy/make-dist.mjs writes the site here.
+    // 相对本文件；deploy/make-dist.mjs 产出到这个目录
     "directory": "./dist",
-    // dist/_headers (generated from deploy/_headers) is picked up automatically
-    // by the assets layer, so the cache and security headers still apply here.
-    "not_found_handling": "none"
+    // dist/_headers 由 assets 层自动识别，静态资源的缓存/安全头照旧生效
+    "not_found_handling": "none",
+    // 让 worker.js 能用 env.ASSETS.fetch() 兜底服务静态文件
+    "binding": "ASSETS"
+  },
+
+  // 邮箱验证码与联机账本用同一个 D1。
+  //
+  // ⚠️ 故意注释掉：database_id 现在是占位符，绑上去会让线上构建失败。
+  //    启用步骤：
+  //      1. Cloudflare 后台 → Workers & Pages → D1 → Create database（名字 evolve）
+  //      2. 把它的 Database ID 填到下面
+  //      3. 取消注释，再推送
+  //    没绑 D1 时 /api/* 会返回"服务端未配置数据库"，但**静态站点完全不受影响**。
+  // "d1_databases": [
+  //   {
+  //     "binding": "DB",
+  //     "database_name": "evolve",
+  //     "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+  //   }
+  // ],
+
+  // 非机密配置。机密（RESEND_API_KEY 等）用 wrangler secret put，不要写在这里。
+  "vars": {
+    "MAIL_FROM": "noreply@mail.evolve-adun4.cn"
   }
 }
